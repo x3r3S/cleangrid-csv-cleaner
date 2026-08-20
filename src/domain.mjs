@@ -7,6 +7,12 @@ const HEADER_ALIASES = Object.freeze({
 });
 
 const REQUIRED_FIELDS = Object.freeze(["company", "email"]);
+const OPTIONAL_FIELDS = Object.freeze(["contact", "phone", "country"]);
+const OPTIONAL_FIELD_LABELS = Object.freeze({
+  contact: "Contact",
+  phone: "Phone",
+  country: "Country"
+});
 
 export function canonicalizeHeader(value = "") {
   return String(value)
@@ -156,14 +162,40 @@ export function summarizeResults(results = []) {
   );
 }
 
-export function createAuditTrail(results = [], fileName = "local.csv", timestamp = "2026-08-19T08:00:00.000Z") {
+function optionalSkipDetail(fields = []) {
+  const labels = fields.map((field) => OPTIONAL_FIELD_LABELS[field]).filter(Boolean);
+  const subject = labels.join(" + ");
+  const detail = [`${subject} ${labels.length === 1 ? "is" : "are"} not mapped · optional values left blank`];
+  if (fields.includes("phone")) detail.push("phone normalization and E.164-shape checks not run");
+  else if (fields.includes("country")) detail.push("country-based phone normalization not run");
+  return detail.join(" · ");
+}
+
+export function createAuditTrail(
+  results = [],
+  fileName = "local.csv",
+  timestamp = "2026-08-19T08:00:00.000Z",
+  { skippedOptionalFields = [] } = {}
+) {
   const summary = summarizeResults(results);
-  return [
+  const skippedOptional = OPTIONAL_FIELDS.filter((field) => skippedOptionalFields.includes(field));
+  const rulesDetail = skippedOptional.includes("phone")
+    ? "Required fields and email shape checks; phone normalization and E.164-shape checks not run"
+    : "Required fields, email shape and E.164-shape checks";
+  const trail = [
     { at: timestamp, event: "FILE_PARSED", detail: `${fileName} · ${summary.total} rows` },
-    { at: timestamp, event: "RULES_APPLIED", detail: "Required fields, email shape and E.164-shape checks" },
+    { at: timestamp, event: "RULES_APPLIED", detail: rulesDetail },
     { at: timestamp, event: "DEDUPE_COMPLETED", detail: `${summary.rejected} rejected · deterministic key` },
     { at: timestamp, event: "EXPORT_READY", detail: `${summary.ready} ready · ${summary.review} review` }
   ];
+  if (skippedOptional.length) {
+    trail.splice(1, 0, {
+      at: timestamp,
+      event: "OPTIONAL_FIELDS_SKIPPED",
+      detail: optionalSkipDetail(skippedOptional)
+    });
+  }
+  return trail;
 }
 
 const SPREADSHEET_FORMULA_PREFIX = /^[\s\p{Cc}\p{Cf}]*[=+\-@]/u;
@@ -183,5 +215,14 @@ export function buildReadyCsv(results = []) {
 }
 
 export function hasRequiredMappings(mapping = {}) {
-  return REQUIRED_FIELDS.every((field) => Boolean(mapping[field]));
+  return getMappingCoverage(mapping).missingRequired.length === 0;
+}
+
+export function getMappingCoverage(mapping = {}) {
+  return {
+    mappedCount: [...REQUIRED_FIELDS, ...OPTIONAL_FIELDS].filter((field) => Boolean(mapping[field])).length,
+    totalCount: REQUIRED_FIELDS.length + OPTIONAL_FIELDS.length,
+    missingRequired: REQUIRED_FIELDS.filter((field) => !mapping[field]),
+    skippedOptional: OPTIONAL_FIELDS.filter((field) => !mapping[field])
+  };
 }

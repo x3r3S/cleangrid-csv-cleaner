@@ -5,6 +5,7 @@ import {
   canonicalizeHeader,
   cleanDataset,
   createAuditTrail,
+  getMappingCoverage,
   hasE164Shape,
   hasRequiredMappings,
   isObviousPhonePlaceholder,
@@ -37,6 +38,21 @@ test("suggests deterministic mappings from common header aliases", () => {
     country: "Market"
   });
   assert.equal(hasRequiredMappings(mapping), true);
+});
+
+test("separates required mapping gaps from optional fields that may be skipped", () => {
+  assert.deepEqual(getMappingCoverage({ company: "Company", email: "Email", phone: "Phone" }), {
+    mappedCount: 3,
+    totalCount: 5,
+    missingRequired: [],
+    skippedOptional: ["contact", "country"]
+  });
+  assert.deepEqual(getMappingCoverage({ company: "", email: "Email" }), {
+    mappedCount: 1,
+    totalCount: 5,
+    missingRequired: ["company"],
+    skippedOptional: ["contact", "phone", "country"]
+  });
 });
 
 test("normalizes core values without inventing missing data", () => {
@@ -143,9 +159,45 @@ test("creates an audit trail that records no external action", () => {
     "2026-08-19T10:00:00.000Z"
   );
   assert.equal(audit.length, 4);
+  assert.deepEqual(audit.map(({ event }) => event), [
+    "FILE_PARSED",
+    "RULES_APPLIED",
+    "DEDUPE_COMPLETED",
+    "EXPORT_READY"
+  ]);
   assert.equal(audit[0].detail, "leads.csv · 3 rows");
+  assert.equal(audit[1].detail, "Required fields, email shape and E.164-shape checks");
   assert.equal(audit.at(-1).detail, "1 ready · 1 review");
   assert.equal(audit.some((entry) => "external" in entry), false);
+});
+
+test("records an unmapped phone without claiming phone checks ran, then restores them", () => {
+  const rows = [{ __row: 2, Company: "North", Email: "hello@north.example", Phone: "123", Country: "DE" }];
+  const withoutPhone = cleanDataset(rows, { company: "Company", email: "Email", country: "Country" });
+  const withPhone = cleanDataset(rows, { company: "Company", email: "Email", phone: "Phone", country: "Country" });
+
+  assert.equal(withoutPhone[0].status, "ready");
+  assert.equal(withoutPhone[0].normalized.phone, "");
+  assert.equal(withPhone[0].status, "review");
+  assert.deepEqual(withPhone[0].reasons, ["INVALID_PHONE"]);
+
+  const skippedAudit = createAuditTrail(withoutPhone, "leads.csv", "2026-08-19T10:00:00.000Z", {
+    skippedOptionalFields: ["phone"]
+  });
+  assert.deepEqual(skippedAudit.map(({ event }) => event), [
+    "FILE_PARSED",
+    "OPTIONAL_FIELDS_SKIPPED",
+    "RULES_APPLIED",
+    "DEDUPE_COMPLETED",
+    "EXPORT_READY"
+  ]);
+  assert.match(skippedAudit[1].detail, /Phone is not mapped/);
+  assert.match(skippedAudit[1].detail, /phone normalization and E\.164-shape checks not run/);
+  assert.doesNotMatch(skippedAudit[2].detail, /^Required fields, email shape and E\.164-shape checks$/);
+
+  const restoredAudit = createAuditTrail(withPhone, "leads.csv", "2026-08-19T10:00:00.000Z");
+  assert.equal(restoredAudit.length, 4);
+  assert.equal(restoredAudit[1].detail, "Required fields, email shape and E.164-shape checks");
 });
 
 test("requires both company and email mappings", () => {

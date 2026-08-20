@@ -2,6 +2,7 @@ import {
   buildReadyCsv,
   cleanDataset,
   createAuditTrail,
+  getMappingCoverage,
   hasRequiredMappings,
   parseCsv,
   suggestColumnMapping,
@@ -84,26 +85,46 @@ function reasonLabel(reason) {
 }
 
 function getMissingRequiredFields() {
-  return requiredFields.filter((field) => !state.mapping[field]);
+  return getMappingCoverage(state.mapping).missingRequired;
+}
+
+function fieldList(fields) {
+  return fields.map((field) => fieldLabels[field]).join(" + ");
 }
 
 function buildAuditState() {
-  const missingRequired = getMissingRequiredFields();
+  const { missingRequired, skippedOptional } = getMappingCoverage(state.mapping);
   const classification = missingRequired.length === 0 ? "complete" : "pending";
   const summary = classification === "complete"
     ? summarizeResults(state.results)
     : { total: state.parsed.rows.length, ready: null, review: null, rejected: null };
-  const events = classification === "complete"
-    ? createAuditTrail(state.results, state.fileName)
-    : [
-      { event: "FILE_PARSED", detail: `${state.fileName} · ${state.parsed.rows.length} rows` },
-      {
-        event: "MAPPING_REQUIRED",
-        detail: `${missingRequired.map((field) => fieldLabels[field]).join(" + ")} must be mapped before rules run`
-      }
+  let events;
+  if (classification === "complete") {
+    events = createAuditTrail(state.results, state.fileName, undefined, {
+      skippedOptionalFields: skippedOptional
+    });
+  } else {
+    events = [
+      { event: "FILE_PARSED", detail: `${state.fileName} · ${state.parsed.rows.length} rows` }
     ];
+    if (skippedOptional.length) {
+      events.push(createAuditTrail([], state.fileName, undefined, {
+        skippedOptionalFields: skippedOptional
+      }).find(({ event }) => event === "OPTIONAL_FIELDS_SKIPPED"));
+    }
+    events.push({
+      event: "MAPPING_REQUIRED",
+      detail: `${fieldList(missingRequired)} must be mapped before rules run`
+    });
+  }
 
-  return { classification, missingRequired, summary, events };
+  return {
+    classification,
+    missingRequired,
+    ...(skippedOptional.length ? { skippedOptional } : {}),
+    summary,
+    events
+  };
 }
 
 function recalculate({ keepSelection = true } = {}) {
@@ -127,20 +148,35 @@ function renderMetrics() {
 }
 
 function renderMappingStatus() {
-  const targets = Object.keys(fieldLabels);
-  const mapped = targets.filter((field) => Boolean(state.mapping[field])).length;
-  const missingRequired = getMissingRequiredFields();
+  const { mappedCount, totalCount, missingRequired, skippedOptional } = getMappingCoverage(state.mapping);
   const schemaReady = missingRequired.length === 0;
-  const count = `${mapped}/${targets.length} mapped`;
-  const missing = missingRequired.map((field) => fieldLabels[field]).join(" + ");
+  const count = `${mappedCount}/${totalCount} mapped`;
+  const missing = fieldList(missingRequired);
+  const skipped = fieldList(skippedOptional);
+  const phoneSkipped = skippedOptional.includes("phone");
+  const countrySkipped = skippedOptional.includes("country");
 
-  elements.mappingState.textContent = schemaReady ? `${count} · ready` : `${count} · ${missing} required`;
+  if (!schemaReady) {
+    const optionalNote = skippedOptional.length ? ` · optional ${skipped} skipped` : "";
+    elements.mappingState.textContent = `${count} · ${missing} required${optionalNote}`;
+    elements.schemaSummary.textContent = `Schema: ${count} · map ${missing} to classify rows${optionalNote}`;
+    elements.railSchemaStatus.textContent = `${count} · mapping incomplete${optionalNote}`;
+    elements.progressMapState.textContent = `${mappedCount}/${totalCount} fields${skippedOptional.length ? ` · ${skipped} optional` : ""}`;
+  } else if (skippedOptional.length) {
+    elements.mappingState.textContent = `${count} · ready · optional ${skipped} skipped`;
+    elements.schemaSummary.textContent = phoneSkipped
+      ? `Schema: ${count} · required-field and email checks active · optional ${skipped} skipped · phone normalization and E.164-shape checks not run`
+      : `Schema: ${count} · email and E.164-shape checks · optional ${skipped} skipped${countrySkipped ? " · country-based phone normalization not run" : ""}`;
+    elements.railSchemaStatus.textContent = `${count} · optional ${skipped} skipped`;
+    elements.progressMapState.textContent = `${mappedCount}/${totalCount} fields · ${skipped} optional`;
+  } else {
+    elements.mappingState.textContent = `${count} · ready`;
+    elements.schemaSummary.textContent = `Schema: ${count} · email and E.164-shape checks`;
+    elements.railSchemaStatus.textContent = `${count} · format checks active`;
+    elements.progressMapState.textContent = `${mappedCount}/${totalCount} fields`;
+  }
   elements.mappingState.classList.toggle("is-incomplete", !schemaReady);
-  elements.schemaSummary.textContent = schemaReady
-    ? `Schema: ${count} · email and E.164-shape checks`
-    : `Schema: ${count} · map ${missing} to classify rows`;
-  elements.railSchemaStatus.textContent = schemaReady ? `${count} · format checks active` : `${count} · mapping incomplete`;
-  elements.progressMapState.textContent = `${mapped}/${targets.length} fields`;
+  elements.mappingState.classList.toggle("has-optional-skips", schemaReady && skippedOptional.length > 0);
   elements.progressMap.classList.toggle("is-done", schemaReady);
   elements.progressMap.classList.toggle("is-active", !schemaReady);
   elements.progressReview.classList.toggle("is-active", schemaReady);
@@ -150,12 +186,12 @@ function renderMappingStatus() {
 function renderMapping() {
   const options = ["", ...state.parsed.headers];
   elements.mappingGrid.innerHTML = Object.entries(fieldLabels).map(([target, label]) => `
-    <div class="mapping-field">
-      <label for="map-${target}">Source column</label>
-      <select id="map-${target}" data-map-target="${target}" aria-label="Source column for ${label}">
+    <div class="mapping-field ${!requiredFields.includes(target) && !state.mapping[target] ? "is-optional-skipped" : ""}">
+      <label for="map-${target}"><span>Source column</span><small>${requiredFields.includes(target) ? "Required" : "Optional"}</small></label>
+      <select id="map-${target}" data-map-target="${target}" aria-label="Source column for ${label}, ${requiredFields.includes(target) ? "required" : "optional"} field">
         ${options.map((header) => `<option value="${escapeHtml(header)}" ${state.mapping[target] === header ? "selected" : ""}>${escapeHtml(header || "Not mapped")}</option>`).join("")}
       </select>
-      <span class="mapping-target"><span aria-hidden="true">→</span> ${label}</span>
+      <span class="mapping-target"><span aria-hidden="true">→</span><span>${label}</span><small>${requiredFields.includes(target) ? "Must map" : state.mapping[target] ? "Mapped" : "Skipped"}</small></span>
     </div>
   `).join("");
 

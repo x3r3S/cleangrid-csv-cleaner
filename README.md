@@ -18,6 +18,10 @@ CleanGrid keeps that preparation step visible. It parses one CSV in the current 
 4. Export only records that passed every blocking rule.
 5. Download a local audit summary when the decision trail is needed.
 
+Company and Email are required mappings: if either is absent, CleanGrid pauses classification and the ready export. Contact, Phone and Country are optional. Skipping one keeps export available, but the mapping status, schema summary and audit name the skipped field. In particular, an unmapped Phone is recorded as blank and the interface explicitly says that phone normalization and E.164-shape checks did not run.
+
+The visible file picker is the native file input, so it can be reached with Tab and opened with Enter or Space. On narrow screens, the records area names the Status and Rule result columns in a visible swipe hint and remains keyboard-scrollable.
+
 No file is uploaded and the app makes no network request. The current rules cover required company and email fields, email shape, DE/GB/US phone normalization, an E.164-shaped phone check, and duplicate detection after normalization. “E.164-shaped” is deliberately narrow: it checks `+`, a non-zero first digit, and 8–15 digits after normalization. A separate placeholder rule holds a source value when, after punctuation is removed, it contains at least eight copies of one digit and no other digit. Neither rule claims that a number is assigned or reachable.
 
 ## Evidence, not just screenshots
@@ -26,8 +30,8 @@ The committed scenario starts with [`messy-customer-import.csv`](evidence/input/
 
 - [`ready.csv`](evidence/expected/ready.csv) is the exact clean export.
 - [`review-and-rejected.json`](evidence/expected/review-and-rejected.json) records every held row and its reason.
-- [`tests/domain.test.mjs`](tests/domain.test.mjs) covers parsing, mapping, phone-shape checks, classification, deduplication, CSV escaping and audit generation.
-- [`tests/browser/workspace.spec.mjs`](tests/browser/workspace.spec.mjs) changes both required mappings in a real Chromium session, verifies the pending audit JSON, restores the mappings, inspects the ready CSV, checks all five mapping names, verifies the Source/CI links, and checks the 390 px layout for page overflow.
+- [`tests/domain.test.mjs`](tests/domain.test.mjs) covers parsing, required/optional mapping coverage, phone-shape checks, classification, deduplication, CSV escaping and audit generation.
+- [`tests/browser/workspace.spec.mjs`](tests/browser/workspace.spec.mjs) changes and restores both required mappings plus all three optional mappings in a real Chromium session, verifies pending and optional-skip audit JSON, inspects the ready CSV, opens the native file picker from the keyboard, checks accessible mapping and table labels, verifies readable type and text contrast, validates mobile horizontal scrolling, verifies the Source/CI links, and checks wide plus 390 px layouts for page overflow.
 - [`scripts/verify-evidence.mjs`](scripts/verify-evidence.mjs) runs the fixture through the same domain functions used by the interface and fails if either expected output drifts.
 
 The [three-minute walkthrough](docs/walkthrough.md) follows the duplicate, review and rejection cases. [Implementation notes](docs/implementation-notes.md) explain the rules and deliberate limits.
@@ -60,7 +64,7 @@ npm run verify:evidence
 npm run verify
 ```
 
-`npm run verify` is the complete local gate: syntax checks, 14 domain tests, fixture evidence, and three Chromium regressions. GitHub Actions installs the pinned dependency and browser, then runs that same gate on pushes and pull requests.
+`npm run verify` is the complete local gate: syntax checks, 16 domain tests, fixture evidence, and five Chromium regressions. GitHub Actions installs the pinned dependency and browser, then runs that same gate on pushes and pull requests.
 
 ## Project boundary
 

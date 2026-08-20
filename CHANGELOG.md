@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-08-21 — optional mapping clarity
+
+- **Required boundary:** Company and Email still block classification and ready export while either mapping is absent.
+- **Optional boundary:** Contact, Phone and Country may be skipped. The live mapping status, schema summary, progress label and audit trail name each skipped optional field instead of presenting an ambiguous generic ready state.
+- **Phone accuracy:** when Phone is not mapped, normalized phone values stay blank and the UI plus audit explicitly say that phone normalization and E.164-shape checks did not run. Restoring Phone returns the original `3 ready / 2 review / 3 rejected` result.
+- **Accessible labels:** every mapping control now exposes whether its target is required or optional, with matching visible field metadata.
+- **Keyboard file choice:** the visible Choose local CSV control now contains a full-size native file input. It participates in normal Tab order, has a visible focus ring and opens from Enter or Space.
+- **Mobile table discovery:** a narrow-screen hint explicitly directs users to swipe for Status and Rule result; the labelled records region also supports horizontal keyboard scrolling.
+- **Readability and contrast:** primary workspace text sizes were raised on wide and mobile layouts. The former `--quiet` text color, which measured roughly `2.62–3.15:1` across its light backgrounds, was replaced with a darker token that stays above `5.18:1`; the muted token now stays above `5.36:1` on the same checked backgrounds.
+- **Regression coverage:** focused domain and Chromium tests exercise required blocking, every optional skip, downloaded Phone-skip audit JSON, restoration to the unchanged full `5/5` state, native keyboard file choice, responsive table guidance, text size, contrast and page overflow.
+
 ## 2026-08-20 — mapping and phone review pass
 
 - **Mapping state:** `5/5 mapped` was static HTML. The count now comes from the current selects; a missing Company or Email pauses classification and disables the ready export.
