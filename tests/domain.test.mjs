@@ -5,7 +5,9 @@ import {
   canonicalizeHeader,
   cleanDataset,
   createAuditTrail,
+  hasE164Shape,
   hasRequiredMappings,
+  isObviousPhonePlaceholder,
   normalizeCompany,
   normalizeEmail,
   normalizePhone,
@@ -42,7 +44,21 @@ test("normalizes core values without inventing missing data", () => {
   assert.equal(normalizeCompany("  nord  studio gmbh "), "nord studio GMBH");
   assert.equal(normalizeEmail(" Sales@Studio.Example "), "sales@studio.example");
   assert.equal(normalizePhone("+49 000 000 0000", "DE"), "+490000000000");
+  assert.equal(normalizePhone("+00000000", "DE"), "+00000000");
+  assert.equal(normalizePhone("0049 151 2345678", "DE"), "+491512345678");
   assert.equal(normalizePhone("", "DE"), "");
+});
+
+test("checks E.164 shape without claiming that a number exists", () => {
+  assert.equal(hasE164Shape("+491512345678"), true);
+  assert.equal(hasE164Shape("+00000000"), false);
+  assert.equal(hasE164Shape("+1234567"), false);
+  assert.equal(hasE164Shape("+1234567890123456"), false);
+  assert.equal(isObviousPhonePlaceholder("(000) 000-0000"), true);
+  assert.equal(isObviousPhonePlaceholder("1111-1111"), true);
+  assert.equal(isObviousPhonePlaceholder("1111-1112"), false);
+  assert.equal(isObviousPhonePlaceholder("000-0000"), false);
+  assert.equal(isObviousPhonePlaceholder("+49 151 2345678"), false);
 });
 
 test("classifies ready, review and rejected rows with explicit reasons", () => {
@@ -55,6 +71,18 @@ test("classifies ready, review and rejected rows with explicit reasons", () => {
   assert.deepEqual(results.map(({ status }) => status), ["ready", "review", "rejected"]);
   assert.deepEqual(results[1].reasons, ["INVALID_PHONE"]);
   assert.deepEqual(results[2].reasons, ["INVALID_EMAIL"]);
+});
+
+test("holds invalid E.164 shapes and single-repeated-digit sources for review", () => {
+  const rows = [
+    { __row: 2, Company: "Zero prefix", Email: "zero@fixture.example", Phone: "+00000000", Country: "DE" },
+    { __row: 3, Company: "Repeated digits", Email: "repeat@fixture.example", Phone: "(000) 000-0000", Country: "US" },
+    { __row: 4, Company: "Format only", Email: "shape@fixture.example", Phone: "+49 151 2345678", Country: "DE" }
+  ];
+  const results = cleanDataset(rows, { company: "Company", email: "Email", phone: "Phone", country: "Country" });
+
+  assert.deepEqual(results.map(({ status }) => status), ["review", "review", "ready"]);
+  assert.deepEqual(results.slice(0, 2).map(({ reasons }) => reasons), [["INVALID_PHONE"], ["INVALID_PHONE"]]);
 });
 
 test("detects duplicate emails after normalization", () => {

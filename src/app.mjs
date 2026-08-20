@@ -2,6 +2,7 @@ import {
   buildReadyCsv,
   cleanDataset,
   createAuditTrail,
+  hasRequiredMappings,
   parseCsv,
   suggestColumnMapping,
   summarizeResults
@@ -30,8 +31,10 @@ const reasonLabels = {
   MISSING_COMPANY: "Company is required",
   MISSING_EMAIL: "Email is required",
   INVALID_EMAIL: "Email format is invalid",
-  INVALID_PHONE: "Phone needs review"
+  INVALID_PHONE: "Phone is not E.164-shaped or repeats one digit only"
 };
+
+const requiredFields = ["company", "email"];
 
 const state = {
   fileName: "crm-contacts-august.csv",
@@ -48,6 +51,12 @@ const elements = {
   fileMeta: document.querySelector("#file-meta"),
   mappingGrid: document.querySelector("#mapping-grid"),
   mappingState: document.querySelector("#mapping-state"),
+  schemaSummary: document.querySelector("#schema-summary"),
+  railSchemaStatus: document.querySelector("#rail-schema-status"),
+  progressMap: document.querySelector("#progress-map"),
+  progressMapState: document.querySelector("#progress-map-state"),
+  progressReview: document.querySelector("#progress-review"),
+  progressReviewState: document.querySelector("#progress-review-state"),
   recordsBody: document.querySelector("#records-body"),
   emptyState: document.querySelector("#empty-state"),
   selectedRow: document.querySelector("#selected-row"),
@@ -74,8 +83,31 @@ function reasonLabel(reason) {
   return reasonLabels[reason] ?? reason.replaceAll("_", " ").toLowerCase();
 }
 
+function getMissingRequiredFields() {
+  return requiredFields.filter((field) => !state.mapping[field]);
+}
+
+function buildAuditState() {
+  const missingRequired = getMissingRequiredFields();
+  const classification = missingRequired.length === 0 ? "complete" : "pending";
+  const summary = classification === "complete"
+    ? summarizeResults(state.results)
+    : { total: state.parsed.rows.length, ready: null, review: null, rejected: null };
+  const events = classification === "complete"
+    ? createAuditTrail(state.results, state.fileName)
+    : [
+      { event: "FILE_PARSED", detail: `${state.fileName} · ${state.parsed.rows.length} rows` },
+      {
+        event: "MAPPING_REQUIRED",
+        detail: `${missingRequired.map((field) => fieldLabels[field]).join(" + ")} must be mapped before rules run`
+      }
+    ];
+
+  return { classification, missingRequired, summary, events };
+}
+
 function recalculate({ keepSelection = true } = {}) {
-  state.results = cleanDataset(state.parsed.rows, state.mapping);
+  state.results = hasRequiredMappings(state.mapping) ? cleanDataset(state.parsed.rows, state.mapping) : [];
   const stillExists = keepSelection && state.results.some(({ row }) => row === state.selectedRow);
   if (!stillExists) state.selectedRow = state.results[0]?.row ?? null;
   renderAll();
@@ -83,12 +115,36 @@ function recalculate({ keepSelection = true } = {}) {
 
 function renderMetrics() {
   const summary = summarizeResults(state.results);
+  const schemaReady = hasRequiredMappings(state.mapping);
   for (const key of ["total", "ready", "review", "rejected"]) {
-    document.querySelector(`#metric-${key}`).textContent = summary[key];
+    document.querySelector(`#metric-${key}`).textContent = key === "total" ? state.parsed.rows.length : summary[key];
     document.querySelector(`#count-${key === "total" ? "all" : key}`).textContent = summary[key];
   }
-  elements.exportReady.textContent = `Export ${summary.ready} ready row${summary.ready === 1 ? "" : "s"}`;
-  elements.exportReady.disabled = summary.ready === 0;
+  elements.exportReady.textContent = schemaReady
+    ? `Export ${summary.ready} ready row${summary.ready === 1 ? "" : "s"}`
+    : "Complete mapping to export";
+  elements.exportReady.disabled = !schemaReady || summary.ready === 0;
+}
+
+function renderMappingStatus() {
+  const targets = Object.keys(fieldLabels);
+  const mapped = targets.filter((field) => Boolean(state.mapping[field])).length;
+  const missingRequired = getMissingRequiredFields();
+  const schemaReady = missingRequired.length === 0;
+  const count = `${mapped}/${targets.length} mapped`;
+  const missing = missingRequired.map((field) => fieldLabels[field]).join(" + ");
+
+  elements.mappingState.textContent = schemaReady ? `${count} · ready` : `${count} · ${missing} required`;
+  elements.mappingState.classList.toggle("is-incomplete", !schemaReady);
+  elements.schemaSummary.textContent = schemaReady
+    ? `Schema: ${count} · email and E.164-shape checks`
+    : `Schema: ${count} · map ${missing} to classify rows`;
+  elements.railSchemaStatus.textContent = schemaReady ? `${count} · format checks active` : `${count} · mapping incomplete`;
+  elements.progressMapState.textContent = `${mapped}/${targets.length} fields`;
+  elements.progressMap.classList.toggle("is-done", schemaReady);
+  elements.progressMap.classList.toggle("is-active", !schemaReady);
+  elements.progressReview.classList.toggle("is-active", schemaReady);
+  elements.progressReviewState.textContent = schemaReady ? "Action needed" : "Waiting for mapping";
 }
 
 function renderMapping() {
@@ -106,13 +162,13 @@ function renderMapping() {
   elements.mappingGrid.querySelectorAll("select").forEach((select) => {
     select.addEventListener("change", () => {
       state.mapping[select.dataset.mapTarget] = select.value;
-      elements.mappingState.textContent = "Mapping updated";
       recalculate();
     });
   });
 }
 
 function renderRecords() {
+  const schemaReady = hasRequiredMappings(state.mapping);
   const visible = state.filter === "all" ? state.results : state.results.filter(({ status }) => status === state.filter);
   elements.recordsBody.innerHTML = visible.map((result) => `
     <tr data-row="${result.row}" class="${result.row === state.selectedRow ? "is-selected" : ""}" tabindex="0" aria-label="Inspect row ${result.row}">
@@ -125,6 +181,11 @@ function renderRecords() {
     </tr>
   `).join("");
   elements.emptyState.hidden = visible.length !== 0;
+  if (!schemaReady) {
+    elements.emptyState.innerHTML = "<strong>Complete the required mapping</strong><span>Map Company and Email before rows are classified or exported.</span>";
+  } else {
+    elements.emptyState.innerHTML = "<strong>No rows in this queue</strong><span>Try another status filter.</span>";
+  }
 
   elements.recordsBody.querySelectorAll("tr").forEach((row) => {
     const select = () => {
@@ -151,7 +212,13 @@ function definitionList(values, mappingMode = false) {
 
 function renderInspection() {
   const selected = state.results.find(({ row }) => row === state.selectedRow) ?? state.results[0];
-  if (!selected) return;
+  if (!selected) {
+    elements.selectedRow.textContent = "Row —";
+    elements.beforeValues.innerHTML = "<dt>Status</dt><dd>Waiting for mapping</dd>";
+    elements.afterValues.innerHTML = "<dt>Status</dt><dd>Not evaluated</dd>";
+    elements.ruleCallout.innerHTML = "<strong>Export paused</strong><br>Complete the required mapping to evaluate rows.";
+    return;
+  }
   elements.selectedRow.textContent = `Row ${selected.row}`;
   elements.beforeValues.innerHTML = definitionList(selected.source, true);
   elements.afterValues.innerHTML = definitionList(selected.normalized);
@@ -159,9 +226,9 @@ function renderInspection() {
 }
 
 function renderAudit() {
-  const audit = createAuditTrail(state.results, state.fileName);
-  elements.auditList.innerHTML = audit.map((entry) => `
-    <li><strong>${escapeHtml(entry.event.replaceAll("_", " "))}</strong><small>${escapeHtml(entry.detail)}</small></li>
+  const { events } = buildAuditState();
+  elements.auditList.innerHTML = events.map((entry) => `
+    <li class="${entry.event === "MAPPING_REQUIRED" ? "is-pending" : ""}"><strong>${escapeHtml(entry.event.replaceAll("_", " "))}</strong><small>${escapeHtml(entry.detail)}</small></li>
   `).join("");
 }
 
@@ -170,6 +237,7 @@ function renderAll() {
   elements.fileMeta.textContent = `${state.parsed.rows.length} rows · processed in this tab`;
   renderMetrics();
   renderMapping();
+  renderMappingStatus();
   renderRecords();
   renderInspection();
   renderAudit();
@@ -226,13 +294,13 @@ elements.exportReady.addEventListener("click", () => {
 });
 
 elements.exportAudit.addEventListener("click", () => {
+  const auditState = buildAuditState();
   const payload = {
     project: "CleanGrid Local",
     provenance: "personal_demo",
     externalActions: false,
     file: state.fileName,
-    summary: summarizeResults(state.results),
-    events: createAuditTrail(state.results, state.fileName)
+    ...auditState
   };
   downloadFile("cleangrid-audit.json", JSON.stringify(payload, null, 2), "application/json");
   showToast("Audit JSON downloaded locally.");

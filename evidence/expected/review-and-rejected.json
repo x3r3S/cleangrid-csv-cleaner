@@ -1,8 +1,8 @@
 {
   "summary": {
     "total": 8,
-    "ready": 4,
-    "review": 1,
+    "ready": 3,
+    "review": 2,
     "rejected": 3
   },
   "heldRows": [
@@ -40,6 +40,15 @@
       "status": "rejected",
       "reasons": [
         "MISSING_COMPANY"
+      ]
+    },
+    {
+      "row": 9,
+      "company": "Bright Mile LLC",
+      "email": "ava@brightmile.example",
+      "status": "review",
+      "reasons": [
+        "INVALID_PHONE"
       ]
     }
   ]
