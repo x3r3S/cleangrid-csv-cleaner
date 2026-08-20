@@ -22,11 +22,11 @@ jobs:
           node-version: 24
           package-manager-cache: false
 
-      - name: Run domain tests
-        run: npm test
+      - name: Install locked dependencies
+        run: npm ci
 
-      - name: Check JavaScript syntax
-        run: npm run check
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
 
-      - name: Verify reproducible evidence
-        run: npm run verify:evidence
+      - name: Run full quality gate
+        run: npm run verify

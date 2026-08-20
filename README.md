@@ -18,15 +18,16 @@ CleanGrid keeps that preparation step visible. It parses one CSV in the current 
 4. Export only records that passed every blocking rule.
 5. Download a local audit summary when the decision trail is needed.
 
-No file is uploaded and the app makes no network request. The current rules cover required company and email fields, email shape, DE/GB/US phone normalization, short-phone review, and duplicate detection after normalization.
+No file is uploaded and the app makes no network request. The current rules cover required company and email fields, email shape, DE/GB/US phone normalization, an E.164-shaped phone check, and duplicate detection after normalization. “E.164-shaped” is deliberately narrow: it checks `+`, a non-zero first digit, and 8–15 digits after normalization. A separate placeholder rule holds a source value when, after punctuation is removed, it contains at least eight copies of one digit and no other digit. Neither rule claims that a number is assigned or reachable.
 
 ## Evidence, not just screenshots
 
-The committed scenario starts with [`messy-customer-import.csv`](evidence/input/messy-customer-import.csv) and produces a repeatable result: **8 rows → 4 ready, 1 review, 3 rejected**.
+The committed scenario starts with [`messy-customer-import.csv`](evidence/input/messy-customer-import.csv) and produces a repeatable result: **8 rows → 3 ready, 2 review, 3 rejected**. The second review row is intentional: the US-style all-zero source value matches the exact single-repeated-digit rule, remains visible in the queue, and is excluded from the ready export.
 
 - [`ready.csv`](evidence/expected/ready.csv) is the exact clean export.
 - [`review-and-rejected.json`](evidence/expected/review-and-rejected.json) records every held row and its reason.
-- [`tests/domain.test.mjs`](tests/domain.test.mjs) covers parsing, mapping, normalization, classification, deduplication, CSV escaping and audit generation.
+- [`tests/domain.test.mjs`](tests/domain.test.mjs) covers parsing, mapping, phone-shape checks, classification, deduplication, CSV escaping and audit generation.
+- [`tests/browser/workspace.spec.mjs`](tests/browser/workspace.spec.mjs) changes both required mappings in a real Chromium session, verifies the pending audit JSON, restores the mappings, inspects the ready CSV, checks all five mapping names, verifies the Source/CI links, and checks the 390 px layout for page overflow.
 - [`scripts/verify-evidence.mjs`](scripts/verify-evidence.mjs) runs the fixture through the same domain functions used by the interface and fails if either expected output drifts.
 
 The [three-minute walkthrough](docs/walkthrough.md) follows the duplicate, review and rejection cases. [Implementation notes](docs/implementation-notes.md) explain the rules and deliberate limits.
@@ -40,9 +41,11 @@ The [three-minute walkthrough](docs/walkthrough.md) follows the duplicate, revie
 
 ## Run locally
 
-Node.js 24 or newer is recommended. There are no runtime dependencies to install.
+Node.js 24 or newer is recommended. Install the locked test dependency, then start the dependency-free static app:
 
 ```bash
+npm ci
+npx playwright install chromium
 npm start
 ```
 
@@ -54,9 +57,10 @@ The command starts a small static server on port `4173`. Open that port in a bro
 npm test
 npm run check
 npm run verify:evidence
+npm run verify
 ```
 
-The GitHub Actions workflow runs the same three checks on pushes and pull requests.
+`npm run verify` is the complete local gate: syntax checks, 14 domain tests, fixture evidence, and three Chromium regressions. GitHub Actions installs the pinned dependency and browser, then runs that same gate on pushes and pull requests.
 
 ## Project boundary
 
@@ -65,3 +69,5 @@ This is a self-initiated portfolio project. Its contact records, company names a
 The current build intentionally handles one comma-delimited file in memory. It does not write to a CRM, persist browser sessions, infer missing values, or provide production authentication, retention controls and connector-specific idempotency.
 
 Source rights are reserved. See [PORTFOLIO-REVIEW-LICENSE.md](PORTFOLIO-REVIEW-LICENSE.md).
+
+See [CHANGELOG.md](CHANGELOG.md) for the defects found after the first portfolio review and the exact corrections.

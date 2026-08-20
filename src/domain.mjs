@@ -80,13 +80,23 @@ export function normalizeEmail(value = "") {
 export function normalizePhone(value = "", country = "") {
   const raw = String(value).trim();
   if (!raw) return "";
+  const hasInternationalPrefix = /^(?:\+|00)/.test(raw);
   let digits = raw.replace(/\D/g, "");
   const normalizedCountry = String(country).trim().toUpperCase();
-  if (digits.startsWith("00")) digits = digits.slice(2);
-  if (normalizedCountry === "DE" && digits.startsWith("0")) digits = `49${digits.slice(1)}`;
-  if (normalizedCountry === "GB" && digits.startsWith("0")) digits = `44${digits.slice(1)}`;
-  if (normalizedCountry === "US" && digits.length === 10) digits = `1${digits}`;
+  if (raw.startsWith("00")) digits = digits.slice(2);
+  if (!hasInternationalPrefix && normalizedCountry === "DE" && digits.startsWith("0")) digits = `49${digits.slice(1)}`;
+  if (!hasInternationalPrefix && normalizedCountry === "GB" && digits.startsWith("0")) digits = `44${digits.slice(1)}`;
+  if (!hasInternationalPrefix && normalizedCountry === "US" && digits.length === 10) digits = `1${digits}`;
   return digits ? `+${digits}` : "";
+}
+
+export function hasE164Shape(value = "") {
+  return /^\+[1-9]\d{7,14}$/.test(String(value).trim());
+}
+
+export function isObviousPhonePlaceholder(value = "") {
+  const digits = String(value).replace(/\D/g, "");
+  return digits.length >= 8 && new Set(digits).size === 1;
 }
 
 export function normalizeCompany(value = "") {
@@ -100,11 +110,12 @@ export function cleanDataset(rows = [], mapping = {}) {
   const seen = new Map();
 
   return rows.map((source, index) => {
+    const sourcePhone = source[mapping.phone] ?? "";
     const normalized = {
       company: normalizeCompany(source[mapping.company] ?? ""),
       contact: String(source[mapping.contact] ?? "").trim().replace(/\s+/g, " "),
       email: normalizeEmail(source[mapping.email] ?? ""),
-      phone: normalizePhone(source[mapping.phone] ?? "", source[mapping.country] ?? ""),
+      phone: normalizePhone(sourcePhone, source[mapping.country] ?? ""),
       country: String(source[mapping.country] ?? "").trim().toUpperCase()
     };
 
@@ -112,7 +123,9 @@ export function cleanDataset(rows = [], mapping = {}) {
     if (!normalized.company) reasons.push("MISSING_COMPANY");
     if (!normalized.email) reasons.push("MISSING_EMAIL");
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized.email)) reasons.push("INVALID_EMAIL");
-    if (normalized.phone && normalized.phone.replace(/\D/g, "").length < 8) reasons.push("INVALID_PHONE");
+    if (normalized.phone && (!hasE164Shape(normalized.phone) || isObviousPhonePlaceholder(sourcePhone))) {
+      reasons.push("INVALID_PHONE");
+    }
 
     const key = normalized.email || `${canonicalizeHeader(normalized.company)}|${normalized.phone}`;
     if (key && seen.has(key)) reasons.push(`DUPLICATE_OF_ROW_${seen.get(key)}`);
@@ -147,7 +160,7 @@ export function createAuditTrail(results = [], fileName = "local.csv", timestamp
   const summary = summarizeResults(results);
   return [
     { at: timestamp, event: "FILE_PARSED", detail: `${fileName} · ${summary.total} rows` },
-    { at: timestamp, event: "RULES_APPLIED", detail: "Whitespace, casing, phone and email normalization" },
+    { at: timestamp, event: "RULES_APPLIED", detail: "Required fields, email shape and E.164-shape checks" },
     { at: timestamp, event: "DEDUPE_COMPLETED", detail: `${summary.rejected} rejected · deterministic key` },
     { at: timestamp, event: "EXPORT_READY", detail: `${summary.ready} ready · ${summary.review} review` }
   ];
