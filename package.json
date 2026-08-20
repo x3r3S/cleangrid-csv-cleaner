@@ -1,0 +1,18 @@
+{
+  "name": "cleangrid",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Browser-local CSV cleanup, validation and deduplication workspace.",
+  "license": "SEE LICENSE IN PORTFOLIO-REVIEW-LICENSE.md",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node scripts/serve.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "check": "node --check src/domain.mjs && node --check src/app.mjs && node --check scripts/serve.mjs && node --check scripts/verify-evidence.mjs",
+    "verify:evidence": "node scripts/verify-evidence.mjs",
+    "verify": "npm run check && npm test && npm run verify:evidence"
+  }
+}

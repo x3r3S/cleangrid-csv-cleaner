@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="CleanGrid Local: browser-local CSV cleanup, validation and deduplication." />
+    <meta name="theme-color" content="#155eef" />
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./styles.css" />
+    <title>CleanGrid Local — CSV cleanup workspace</title>
+  </head>
+  <body data-demo="true">
+    <a class="skip-link" href="#workspace">Skip to workspace</a>
+    <header class="topbar">
+      <a class="brand" href="#workspace" aria-label="CleanGrid Local home">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span>CleanGrid <strong>Local</strong></span>
+      </a>
+      <div class="topbar-meta">
+        <span class="workspace-context"><small>Recipe</small><strong>CRM contacts / v3</strong></span>
+        <span class="privacy-chip"><span aria-hidden="true">●</span> LOCAL WORKSPACE</span>
+      </div>
+    </header>
+
+    <div class="app-shell">
+      <aside class="nav-rail" aria-label="Workspace navigation">
+        <nav>
+          <a class="nav-item is-active" href="#workspace" aria-current="page">
+            <span class="nav-icon" aria-hidden="true">▦</span><span>Workspace</span>
+          </a>
+          <a class="nav-item" href="#mapping">
+            <span class="nav-icon" aria-hidden="true">⇄</span><span>Mapping</span>
+          </a>
+          <a class="nav-item" href="#records">
+            <span class="nav-icon" aria-hidden="true">✓</span><span>Review queue</span>
+          </a>
+          <a class="nav-item" href="#audit">
+            <span class="nav-icon" aria-hidden="true">≡</span><span>Audit trail</span>
+          </a>
+        </nav>
+        <div class="rail-card">
+          <span class="eyebrow">Recipe</span>
+          <strong>CRM contacts v3</strong>
+          <small>5 mapped fields · strict email</small>
+        </div>
+        <div class="rail-foot">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span>Local session</span>
+        </div>
+      </aside>
+
+      <main class="workspace" id="workspace">
+        <section class="page-heading" aria-labelledby="page-title">
+          <div>
+            <span class="eyebrow">Customer import / preparation sheet</span>
+            <h1 id="page-title">Turn an awkward CSV into a clean import.</h1>
+            <p>Match the source columns, inspect exceptions and export only rows that meet the CRM recipe.</p>
+          </div>
+          <div class="heading-actions">
+            <label class="button button-secondary" for="file-input">
+              <span aria-hidden="true">＋</span> Choose local CSV
+            </label>
+            <input id="file-input" type="file" accept=".csv,text/csv" hidden />
+            <button class="button button-primary" id="export-ready" type="button">Export ready CSV</button>
+          </div>
+        </section>
+
+        <section class="source-card" aria-labelledby="source-title">
+          <div class="file-identity">
+            <span class="file-icon" aria-hidden="true">CSV</span>
+            <div>
+              <span class="eyebrow" id="source-title">Current source</span>
+              <strong id="file-name">crm-contacts-august.csv</strong>
+              <small id="file-meta">8 rows · processed in this tab</small>
+            </div>
+          </div>
+          <ol class="progress-steps" aria-label="Cleanup progress">
+            <li class="is-done"><span>1</span><div><strong>Parse</strong><small>Complete</small></div></li>
+            <li class="is-done"><span>2</span><div><strong>Map</strong><small>5 fields</small></div></li>
+            <li class="is-active"><span>3</span><div><strong>Review</strong><small>Action needed</small></div></li>
+            <li><span>4</span><div><strong>Export</strong><small>Ready rows only</small></div></li>
+          </ol>
+        </section>
+
+        <section class="metrics" aria-label="Cleanup summary">
+          <span class="metric-card metric-total"><b id="metric-total">0</b> rows parsed</span>
+          <span class="metric-card metric-ready"><b id="metric-ready">0</b> ready</span>
+          <span class="metric-card metric-review"><b id="metric-review">0</b> need review</span>
+          <span class="metric-card metric-rejected"><b id="metric-rejected">0</b> rejected</span>
+          <span class="status-note">Schema: 5/5 mapped · strict email · E.164 phone</span>
+        </section>
+
+        <section class="mapping-card" id="mapping" aria-labelledby="mapping-title">
+          <div class="section-heading">
+            <div>
+              <span class="eyebrow">Column mapping</span>
+              <h2 id="mapping-title">Source header → CRM field</h2>
+            </div>
+            <span class="mapping-state" id="mapping-state">Auto-mapped</span>
+          </div>
+          <div class="mapping-grid" id="mapping-grid"></div>
+        </section>
+
+        <section class="review-layout" id="records" aria-labelledby="records-title">
+          <div class="records-card">
+            <div class="section-heading records-heading">
+              <div>
+                <span class="eyebrow">Working table</span>
+                <h2 id="records-title">Rows and rule results</h2>
+              </div>
+              <div class="filter-tabs" role="group" aria-label="Filter records">
+                <button class="filter-tab is-active" type="button" data-filter="all">All <span id="count-all">0</span></button>
+                <button class="filter-tab" type="button" data-filter="ready">Ready <span id="count-ready">0</span></button>
+                <button class="filter-tab" type="button" data-filter="review">Review <span id="count-review">0</span></button>
+                <button class="filter-tab" type="button" data-filter="rejected">Rejected <span id="count-rejected">0</span></button>
+              </div>
+            </div>
+            <div class="table-wrap" tabindex="0" aria-label="Cleaned records table">
+              <table>
+                <thead><tr><th>Row</th><th>Company</th><th>Email</th><th>Phone</th><th>Status</th><th>Rule result</th></tr></thead>
+                <tbody id="records-body"></tbody>
+              </table>
+            </div>
+            <div class="empty-state" id="empty-state" hidden>
+              <strong>No rows in this queue</strong><span>Try another status filter.</span>
+            </div>
+          </div>
+
+          <aside class="inspection-card" aria-labelledby="inspection-title">
+            <div class="inspection-top">
+              <span class="eyebrow">Selected record</span>
+              <span class="row-pill" id="selected-row">Row —</span>
+            </div>
+            <h2 id="inspection-title">Before / after</h2>
+            <div class="compare-block">
+              <span class="compare-label">Before</span>
+              <dl id="before-values"></dl>
+            </div>
+            <div class="compare-arrow" aria-hidden="true">↓</div>
+            <div class="compare-block is-clean">
+              <span class="compare-label">Normalized</span>
+              <dl id="after-values"></dl>
+            </div>
+            <div class="rule-callout" id="rule-callout"></div>
+          </aside>
+        </section>
+
+        <section class="audit-card" id="audit" aria-labelledby="audit-title">
+          <div class="section-heading">
+            <div>
+              <span class="eyebrow">Processing log</span>
+              <h2 id="audit-title">Audit trail</h2>
+            </div>
+            <button class="text-button" id="export-audit" type="button">Download audit JSON <span aria-hidden="true">↓</span></button>
+          </div>
+          <ol class="audit-list" id="audit-list"></ol>
+        </section>
+      </main>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+    <script type="module" src="./src/app.mjs"></script>
+  </body>
+</html>

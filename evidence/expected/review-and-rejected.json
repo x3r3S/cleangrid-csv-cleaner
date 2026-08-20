@@ -1,0 +1,46 @@
+{
+  "summary": {
+    "total": 8,
+    "ready": 4,
+    "review": 1,
+    "rejected": 3
+  },
+  "heldRows": [
+    {
+      "row": 4,
+      "company": "Nordlicht Studio GMBH",
+      "email": "hello@nordlicht.example",
+      "status": "rejected",
+      "reasons": [
+        "DUPLICATE_OF_ROW_2"
+      ]
+    },
+    {
+      "row": 6,
+      "company": "Kernwerk GMBH",
+      "email": "felix@kernwerk.example",
+      "status": "review",
+      "reasons": [
+        "INVALID_PHONE"
+      ]
+    },
+    {
+      "row": 7,
+      "company": "Paper Kite Studio",
+      "email": "sofia.paperkite.example",
+      "status": "rejected",
+      "reasons": [
+        "INVALID_EMAIL"
+      ]
+    },
+    {
+      "row": 8,
+      "company": "",
+      "email": "jonas@fjordline.example",
+      "status": "rejected",
+      "reasons": [
+        "MISSING_COMPANY"
+      ]
+    }
+  ]
+}
