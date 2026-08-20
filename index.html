@@ -61,10 +61,10 @@
             <p>Match the source columns, inspect exceptions and export only rows that meet the CRM recipe.</p>
           </div>
           <div class="heading-actions">
-            <label class="button button-secondary" for="file-input">
-              <span aria-hidden="true">＋</span> Choose local CSV
+            <label class="file-picker">
+              <span class="button button-secondary" aria-hidden="true"><span>＋</span> Choose local CSV</span>
+              <input class="file-picker-input" id="file-input" type="file" accept=".csv,text/csv" aria-label="Choose local CSV" />
             </label>
-            <input id="file-input" type="file" accept=".csv,text/csv" hidden />
             <button class="button button-primary" id="export-ready" type="button">Export ready CSV</button>
           </div>
         </section>
@@ -119,7 +119,8 @@
                 <button class="filter-tab" type="button" data-filter="rejected">Rejected <span id="count-rejected">0</span></button>
               </div>
             </div>
-            <div class="table-wrap" tabindex="0" aria-label="Cleaned records table">
+            <p class="table-scroll-hint" id="table-scroll-hint"><span aria-hidden="true">↔</span> Swipe horizontally to see Status and Rule result.</p>
+            <div class="table-wrap" role="region" tabindex="0" aria-label="Cleaned records table; scroll horizontally for Status and Rule result" aria-describedby="table-scroll-hint">
               <table>
                 <thead><tr><th>Row</th><th>Company</th><th>Email</th><th>Phone</th><th>Status</th><th>Rule result</th></tr></thead>
                 <tbody id="records-body"></tbody>
