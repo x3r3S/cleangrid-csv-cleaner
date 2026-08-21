@@ -13,6 +13,14 @@ const OPTIONAL_FIELD_LABELS = Object.freeze({
   phone: "Phone",
   country: "Country"
 });
+const FIELD_LABELS = Object.freeze({
+  company: "Company",
+  contact: "Contact",
+  email: "Email",
+  phone: "Phone",
+  country: "Country"
+});
+const MAPPING_FIELDS = Object.freeze(["company", "contact", "email", "phone", "country"]);
 
 export function canonicalizeHeader(value = "") {
   return String(value)
@@ -112,7 +120,17 @@ export function normalizeCompany(value = "") {
     .replace(/\b(gmbh|ltd|llc|inc)\b/gi, (suffix) => suffix.toUpperCase());
 }
 
+function mappingConflictDetail(duplicateSources = []) {
+  return duplicateSources
+    .map(({ source, targets }) => `${source} is assigned to ${targets.map((target) => FIELD_LABELS[target] ?? target).join(" + ")}`)
+    .join("; ");
+}
+
 export function cleanDataset(rows = [], mapping = {}) {
+  const { duplicateSources } = getMappingCoverage(mapping);
+  if (duplicateSources.length) {
+    throw new RangeError(`Duplicate source mapping: ${mappingConflictDetail(duplicateSources)}. Each source column can map to only one CRM field.`);
+  }
   const seen = new Map();
 
   return rows.map((source, index) => {
@@ -218,11 +236,28 @@ export function hasRequiredMappings(mapping = {}) {
   return getMappingCoverage(mapping).missingRequired.length === 0;
 }
 
+export function isMappingReady(mapping = {}) {
+  const { missingRequired, duplicateSources } = getMappingCoverage(mapping);
+  return missingRequired.length === 0 && duplicateSources.length === 0;
+}
+
 export function getMappingCoverage(mapping = {}) {
+  const targetsBySource = new Map();
+  for (const target of MAPPING_FIELDS) {
+    const source = String(mapping[target] ?? "");
+    if (!source) continue;
+    const targets = targetsBySource.get(source) ?? [];
+    targets.push(target);
+    targetsBySource.set(source, targets);
+  }
+
   return {
-    mappedCount: [...REQUIRED_FIELDS, ...OPTIONAL_FIELDS].filter((field) => Boolean(mapping[field])).length,
+    mappedCount: MAPPING_FIELDS.filter((field) => Boolean(mapping[field])).length,
     totalCount: REQUIRED_FIELDS.length + OPTIONAL_FIELDS.length,
     missingRequired: REQUIRED_FIELDS.filter((field) => !mapping[field]),
-    skippedOptional: OPTIONAL_FIELDS.filter((field) => !mapping[field])
+    skippedOptional: OPTIONAL_FIELDS.filter((field) => !mapping[field]),
+    duplicateSources: [...targetsBySource]
+      .filter(([, targets]) => targets.length > 1)
+      .map(([source, targets]) => ({ source, targets }))
   };
 }

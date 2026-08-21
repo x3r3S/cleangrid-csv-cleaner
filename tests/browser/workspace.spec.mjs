@@ -81,6 +81,59 @@ test("required mappings pause classification and recover after remapping", async
   }
 });
 
+test("duplicate source mapping fails closed and recovers at wide and mobile sizes", async ({ page }) => {
+  for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(viewport);
+    await page.goto("/");
+
+    const company = page.locator('[data-map-target="company"]');
+    const email = page.locator('[data-map-target="email"]');
+    await company.selectOption("E-mail");
+
+    const warning = page.getByRole("alert");
+    await expect(warning).toContainText("E-mail");
+    await expect(warning).toContainText("Company + Email");
+    await expect(company).toHaveAttribute("aria-invalid", "true");
+    await expect(email).toHaveAttribute("aria-invalid", "true");
+    await expect(page.locator("#mapping-state")).toContainText("mapping conflict");
+    await expect(page.locator("#schema-summary")).toContainText("resolve duplicate source mapping");
+    await expect(page.locator("#metric-total")).toHaveText("8");
+    await expect(page.locator("#metric-ready")).toHaveText("0");
+    await expect(page.locator("#metric-review")).toHaveText("0");
+    await expect(page.locator("#metric-rejected")).toHaveText("0");
+    await expect(page.locator("#records-body tr")).toHaveCount(0);
+    await expect(page.locator("#empty-state")).toContainText("Resolve the duplicate source mapping");
+    await expect(page.getByRole("button", { name: "Resolve mapping conflict to export" })).toBeDisabled();
+    await expect(page.locator("#audit-list")).toContainText("MAPPING CONFLICT");
+    await expect(page.locator("#audit-list")).not.toContainText("RULES APPLIED");
+
+    const auditDownloadStarted = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Download audit JSON" }).click();
+    const auditDownload = await auditDownloadStarted;
+    const audit = JSON.parse(await readFile(await auditDownload.path(), "utf8"));
+
+    expect(audit.classification).toBe("blocked");
+    expect(audit.missingRequired).toEqual([]);
+    expect(audit.duplicateSources).toEqual([
+      { source: "E-mail", targets: ["company", "email"] }
+    ]);
+    expect(audit.summary).toEqual({ total: 8, ready: null, review: null, rejected: null });
+    expect(audit.events.map(({ event }) => event)).toEqual(["FILE_PARSED", "MAPPING_CONFLICT"]);
+
+    await company.selectOption("Company Name");
+    await expect(warning).toBeHidden();
+    await expect(company).not.toHaveAttribute("aria-invalid", "true");
+    await expect(email).not.toHaveAttribute("aria-invalid", "true");
+    await expect(page.locator("#mapping-state")).toHaveText("5/5 mapped · ready");
+    await expect(page.locator("#metric-ready")).toHaveText("3");
+    await expect(page.locator("#metric-review")).toHaveText("2");
+    await expect(page.locator("#metric-rejected")).toHaveText("3");
+    await expect(page.getByRole("button", { name: "Export 3 ready rows" })).toBeEnabled();
+    await expect(page.locator("#records-body tr")).toHaveCount(8);
+    await expect(page.locator("#audit-list")).not.toContainText("MAPPING CONFLICT");
+  }
+});
+
 test("ready export matches the visible queue and excludes the placeholder phone", async ({ page }) => {
   await page.goto("/");
 

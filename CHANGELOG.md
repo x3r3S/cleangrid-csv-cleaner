@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-08-21 — duplicate mapping safety
+
+- **Fail-closed mapping:** one source column can no longer silently feed multiple CRM fields. A duplicate assignment blocks classification and ready export until every mapped source is unique.
+- **Accessible recovery:** both conflicting selects expose `aria-invalid`, reference a visible alert and return to the normal state as soon as either field is remapped.
+- **Audit truth:** blocked downloads report `classification: "blocked"`, the exact source and target fields in `duplicateSources`, and `MAPPING_CONFLICT` without claiming that cleanup rules ran.
+- **Regression coverage:** a domain test rejects direct classification with a duplicate mapping, while Chromium exercises the blocked and recovered flow at 1440 × 900 and 390 × 844.
+
 ## 2026-08-21 — optional mapping clarity
 
 - **Required boundary:** Company and Email still block classification and ready export while either mapping is absent.
