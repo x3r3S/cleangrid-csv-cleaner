@@ -105,16 +105,20 @@ h1 { max-width: 760px; margin: 6px 0 5px; font: 500 clamp(30px,3vw,46px)/1 var(-
 h2 { margin: 3px 0 0; font: 500 18px var(--serif); letter-spacing: -.02em; }
 .mapping-state { padding: 5px 8px; border: 1px solid #9ebdaf; color: var(--forest); background: var(--forest-pale); font: 700 9px var(--mono); text-transform: uppercase; }
 .mapping-state.is-incomplete { border-color: #d9b57f; color: #744313; background: var(--orange-pale); }
+.mapping-state.has-conflict { border-color: #d4a4a6; color: var(--red); background: var(--red-pale); }
 .mapping-state.has-optional-skips { border-color: #9fb6cf; color: #254b75; background: #eaf2fa; }
 .mapping-grid { display: grid; grid-template-columns: repeat(5,1fr); gap: 0; margin-top: 11px; border: 1px solid var(--line); border-right: 0; }
 .mapping-field { min-width: 0; padding: 9px; border-right: 1px solid var(--line); background: #fafaf6; }
 .mapping-field.is-optional-skipped { background: #f2f6fa; }
+.mapping-field.is-conflict { background: var(--red-pale); }
 .mapping-field label { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 6px; color: var(--quiet); font: 700 9px var(--mono); letter-spacing: .08em; text-transform: uppercase; }
 .mapping-field label small, .mapping-target small { color: var(--muted); font: 700 8px var(--mono); letter-spacing: .04em; text-transform: uppercase; }
 .mapping-field select { width: 100%; min-height: 35px; padding: 6px 25px 6px 8px; border: 1px solid var(--line-dark); border-radius: 0; color: var(--ink); background: var(--sheet); font: 700 11px var(--mono); }
+.mapping-field.is-conflict select { border-color: var(--red); }
 .mapping-target { display: flex; align-items: center; gap: 5px; margin-top: 7px; color: var(--forest); font: 700 10px var(--mono); }
 .mapping-target small { margin-left: auto; }
 .mapping-field.is-optional-skipped .mapping-target { color: var(--blue-pencil); }
+.mapping-warning { margin: 0; padding: 10px 12px; border: 1px solid #d4a4a6; border-top: 0; color: var(--red); background: var(--red-pale); font-size: 12px; line-height: 1.45; }
 .review-layout { display: grid; grid-template-columns: minmax(0,1.85fr) minmax(270px,.52fr); gap: 9px; align-items: stretch; }
 .records-card { min-width: 0; overflow: hidden; }
 .records-heading { padding: 12px 14px 10px; }

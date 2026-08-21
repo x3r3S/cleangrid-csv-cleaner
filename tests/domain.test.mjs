@@ -8,6 +8,7 @@ import {
   getMappingCoverage,
   hasE164Shape,
   hasRequiredMappings,
+  isMappingReady,
   isObviousPhonePlaceholder,
   normalizeCompany,
   normalizeEmail,
@@ -45,14 +46,38 @@ test("separates required mapping gaps from optional fields that may be skipped",
     mappedCount: 3,
     totalCount: 5,
     missingRequired: [],
-    skippedOptional: ["contact", "country"]
+    skippedOptional: ["contact", "country"],
+    duplicateSources: []
   });
   assert.deepEqual(getMappingCoverage({ company: "", email: "Email" }), {
     mappedCount: 1,
     totalCount: 5,
     missingRequired: ["company"],
-    skippedOptional: ["contact", "phone", "country"]
+    skippedOptional: ["contact", "phone", "country"],
+    duplicateSources: []
   });
+});
+
+test("reports duplicate source assignments and refuses semantic classification", () => {
+  const mapping = {
+    company: "E-mail",
+    contact: "Full Name",
+    email: "E-mail",
+    phone: "Mobile",
+    country: "Market"
+  };
+
+  assert.deepEqual(getMappingCoverage(mapping).duplicateSources, [
+    { source: "E-mail", targets: ["company", "email"] }
+  ]);
+  assert.equal(hasRequiredMappings(mapping), true);
+  assert.equal(isMappingReady(mapping), false);
+  assert.throws(
+    () => cleanDataset([
+      { __row: 2, "E-mail": "hello@north.example", "Full Name": "Mara", Mobile: "+491512345678", Market: "DE" }
+    ], mapping),
+    /E-mail.*Company.*Email/i
+  );
 });
 
 test("normalizes core values without inventing missing data", () => {

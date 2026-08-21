@@ -18,7 +18,7 @@ CleanGrid keeps that preparation step visible. It parses one CSV in the current 
 4. Export only records that passed every blocking rule.
 5. Download a local audit summary when the decision trail is needed.
 
-Company and Email are required mappings: if either is absent, CleanGrid pauses classification and the ready export. Contact, Phone and Country are optional. Skipping one keeps export available, but the mapping status, schema summary and audit name the skipped field. In particular, an unmapped Phone is recorded as blank and the interface explicitly says that phone normalization and E.164-shape checks did not run.
+Company and Email are required mappings: if either is absent, CleanGrid pauses classification and the ready export. Every mapped source must also be unique; assigning one source column to two CRM fields produces an accessible mapping warning and blocks classification, ready export and rule-completion claims until remapped. Contact, Phone and Country are optional. Skipping one keeps export available, but the mapping status, schema summary and audit name the skipped field. In particular, an unmapped Phone is recorded as blank and the interface explicitly says that phone normalization and E.164-shape checks did not run.
 
 The visible file picker is the native file input, so it can be reached with Tab and opened with Enter or Space. On narrow screens, the records area names the Status and Rule result columns in a visible swipe hint and remains keyboard-scrollable.
 
@@ -30,8 +30,8 @@ The committed scenario starts with [`messy-customer-import.csv`](evidence/input/
 
 - [`ready.csv`](evidence/expected/ready.csv) is the exact clean export.
 - [`review-and-rejected.json`](evidence/expected/review-and-rejected.json) records every held row and its reason.
-- [`tests/domain.test.mjs`](tests/domain.test.mjs) covers parsing, required/optional mapping coverage, phone-shape checks, classification, deduplication, CSV escaping and audit generation.
-- [`tests/browser/workspace.spec.mjs`](tests/browser/workspace.spec.mjs) changes and restores both required mappings plus all three optional mappings in a real Chromium session, verifies pending and optional-skip audit JSON, inspects the ready CSV, opens the native file picker from the keyboard, checks accessible mapping and table labels, verifies readable type and text contrast, validates mobile horizontal scrolling, verifies the Source/CI links, and checks wide plus 390 px layouts for page overflow.
+- [`tests/domain.test.mjs`](tests/domain.test.mjs) covers parsing, required/optional and duplicate-source mapping coverage, phone-shape checks, classification, deduplication, CSV escaping and audit generation.
+- [`tests/browser/workspace.spec.mjs`](tests/browser/workspace.spec.mjs) changes and restores both required mappings plus all three optional mappings, fails closed on a duplicate source assignment, verifies pending, blocked and optional-skip audit JSON, inspects the ready CSV, opens the native file picker from the keyboard, checks accessible mapping and table labels, verifies readable type and text contrast, validates mobile horizontal scrolling, verifies the Source/CI links, and checks wide plus 390 px layouts for page overflow.
 - [`scripts/verify-evidence.mjs`](scripts/verify-evidence.mjs) runs the fixture through the same domain functions used by the interface and fails if either expected output drifts.
 
 The [three-minute walkthrough](docs/walkthrough.md) follows the duplicate, review and rejection cases. [Implementation notes](docs/implementation-notes.md) explain the rules and deliberate limits.
@@ -64,7 +64,7 @@ npm run verify:evidence
 npm run verify
 ```
 
-`npm run verify` is the complete local gate: syntax checks, 16 domain tests, fixture evidence, and five Chromium regressions. GitHub Actions installs the pinned dependency and browser, then runs that same gate on pushes and pull requests.
+`npm run verify` is the complete local gate: syntax checks, 17 domain tests, fixture evidence, and six Chromium regressions. GitHub Actions installs the pinned dependency and browser, then runs that same gate on pushes and pull requests.
 
 ## Project boundary
 

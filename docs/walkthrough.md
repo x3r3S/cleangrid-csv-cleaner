@@ -12,6 +12,8 @@ This pass uses the checked-in file, so every result is repeatable.
 
 To check the mapping guard, set either Company or Email to **Not mapped**. The badge should change from `5/5 mapped` to `4/5 mapped`, the row table should pause, and the export button should say **Complete mapping to export**. Remap the field and the 3 / 2 / 3 result should return.
 
+To check semantic mapping safety, set Company to **E-mail** while Email is still **E-mail**. Both controls should be marked invalid, the mapping alert should say that E-mail is assigned to Company + Email, all three classification queues should show zero, and the ready export should remain disabled. The audit download should say `classification: "blocked"` with `MAPPING_CONFLICT` and no `RULES_APPLIED`. Restore Company to **Company Name** and confirm the 3 / 2 / 3 result returns.
+
 To check the optional boundary, set Contact, Phone or Country to **Not mapped**. The ready export should remain available, while the badge, schema summary and audit name that optional field as skipped. With Phone skipped, the schema summary must say that phone normalization and E.164-shape checks did not run; remapping Mobile to Phone must restore the original 3 / 2 / 3 result and the full `5/5 mapped` wording.
 
 For the keyboard path, Tab to **Choose local CSV** and press Enter or Space; the operating-system file chooser should open. At a mobile width, the records card should show **Swipe horizontally to see Status and Rule result**. Focus the table and use the horizontal arrow keys, or swipe it, to reveal those columns without moving the whole page.

@@ -3,7 +3,7 @@ import {
   cleanDataset,
   createAuditTrail,
   getMappingCoverage,
-  hasRequiredMappings,
+  isMappingReady,
   parseCsv,
   suggestColumnMapping,
   summarizeResults
@@ -51,6 +51,7 @@ const elements = {
   fileName: document.querySelector("#file-name"),
   fileMeta: document.querySelector("#file-meta"),
   mappingGrid: document.querySelector("#mapping-grid"),
+  mappingWarning: document.querySelector("#mapping-warning"),
   mappingState: document.querySelector("#mapping-state"),
   schemaSummary: document.querySelector("#schema-summary"),
   railSchemaStatus: document.querySelector("#rail-schema-status"),
@@ -92,9 +93,15 @@ function fieldList(fields) {
   return fields.map((field) => fieldLabels[field]).join(" + ");
 }
 
+function duplicateMappingDetail(duplicateSources) {
+  return duplicateSources
+    .map(({ source, targets }) => `${source} is assigned to ${fieldList(targets)}`)
+    .join("; ");
+}
+
 function buildAuditState() {
-  const { missingRequired, skippedOptional } = getMappingCoverage(state.mapping);
-  const classification = missingRequired.length === 0 ? "complete" : "pending";
+  const { missingRequired, skippedOptional, duplicateSources } = getMappingCoverage(state.mapping);
+  const classification = duplicateSources.length ? "blocked" : missingRequired.length ? "pending" : "complete";
   const summary = classification === "complete"
     ? summarizeResults(state.results)
     : { total: state.parsed.rows.length, ready: null, review: null, rejected: null };
@@ -112,23 +119,32 @@ function buildAuditState() {
         skippedOptionalFields: skippedOptional
       }).find(({ event }) => event === "OPTIONAL_FIELDS_SKIPPED"));
     }
-    events.push({
-      event: "MAPPING_REQUIRED",
-      detail: `${fieldList(missingRequired)} must be mapped before rules run`
-    });
+    if (missingRequired.length) {
+      events.push({
+        event: "MAPPING_REQUIRED",
+        detail: `${fieldList(missingRequired)} must be mapped before rules run`
+      });
+    }
+    if (duplicateSources.length) {
+      events.push({
+        event: "MAPPING_CONFLICT",
+        detail: `${duplicateMappingDetail(duplicateSources)} · choose unique source columns before rules run`
+      });
+    }
   }
 
   return {
     classification,
     missingRequired,
     ...(skippedOptional.length ? { skippedOptional } : {}),
+    ...(duplicateSources.length ? { duplicateSources } : {}),
     summary,
     events
   };
 }
 
 function recalculate({ keepSelection = true } = {}) {
-  state.results = hasRequiredMappings(state.mapping) ? cleanDataset(state.parsed.rows, state.mapping) : [];
+  state.results = isMappingReady(state.mapping) ? cleanDataset(state.parsed.rows, state.mapping) : [];
   const stillExists = keepSelection && state.results.some(({ row }) => row === state.selectedRow);
   if (!stillExists) state.selectedRow = state.results[0]?.row ?? null;
   renderAll();
@@ -136,32 +152,43 @@ function recalculate({ keepSelection = true } = {}) {
 
 function renderMetrics() {
   const summary = summarizeResults(state.results);
-  const schemaReady = hasRequiredMappings(state.mapping);
+  const { duplicateSources } = getMappingCoverage(state.mapping);
+  const schemaReady = isMappingReady(state.mapping);
   for (const key of ["total", "ready", "review", "rejected"]) {
     document.querySelector(`#metric-${key}`).textContent = key === "total" ? state.parsed.rows.length : summary[key];
     document.querySelector(`#count-${key === "total" ? "all" : key}`).textContent = summary[key];
   }
   elements.exportReady.textContent = schemaReady
     ? `Export ${summary.ready} ready row${summary.ready === 1 ? "" : "s"}`
-    : "Complete mapping to export";
+    : duplicateSources.length ? "Resolve mapping conflict to export" : "Complete mapping to export";
   elements.exportReady.disabled = !schemaReady || summary.ready === 0;
 }
 
 function renderMappingStatus() {
-  const { mappedCount, totalCount, missingRequired, skippedOptional } = getMappingCoverage(state.mapping);
-  const schemaReady = missingRequired.length === 0;
+  const { mappedCount, totalCount, missingRequired, skippedOptional, duplicateSources } = getMappingCoverage(state.mapping);
+  const schemaReady = missingRequired.length === 0 && duplicateSources.length === 0;
   const count = `${mappedCount}/${totalCount} mapped`;
   const missing = fieldList(missingRequired);
   const skipped = fieldList(skippedOptional);
   const phoneSkipped = skippedOptional.includes("phone");
   const countrySkipped = skippedOptional.includes("country");
 
-  if (!schemaReady) {
+  if (duplicateSources.length) {
+    const requiredNote = missingRequired.length ? ` · ${missing} required` : "";
+    const conflictDetail = duplicateMappingDetail(duplicateSources);
+    elements.mappingState.textContent = `${count} · mapping conflict${requiredNote}`;
+    elements.schemaSummary.textContent = `Schema: ${count} · resolve duplicate source mapping${requiredNote}`;
+    elements.railSchemaStatus.textContent = `${count} · mapping conflict`;
+    elements.progressMapState.textContent = `${mappedCount}/${totalCount} fields · conflict`;
+    elements.mappingWarning.textContent = `Mapping conflict: ${conflictDetail}. Each source column can map to only one CRM field. Choose a unique source before classification or export.`;
+    elements.mappingWarning.hidden = false;
+  } else if (!schemaReady) {
     const optionalNote = skippedOptional.length ? ` · optional ${skipped} skipped` : "";
     elements.mappingState.textContent = `${count} · ${missing} required${optionalNote}`;
     elements.schemaSummary.textContent = `Schema: ${count} · map ${missing} to classify rows${optionalNote}`;
     elements.railSchemaStatus.textContent = `${count} · mapping incomplete${optionalNote}`;
     elements.progressMapState.textContent = `${mappedCount}/${totalCount} fields${skippedOptional.length ? ` · ${skipped} optional` : ""}`;
+    elements.mappingWarning.hidden = true;
   } else if (skippedOptional.length) {
     elements.mappingState.textContent = `${count} · ready · optional ${skipped} skipped`;
     elements.schemaSummary.textContent = phoneSkipped
@@ -169,13 +196,16 @@ function renderMappingStatus() {
       : `Schema: ${count} · email and E.164-shape checks · optional ${skipped} skipped${countrySkipped ? " · country-based phone normalization not run" : ""}`;
     elements.railSchemaStatus.textContent = `${count} · optional ${skipped} skipped`;
     elements.progressMapState.textContent = `${mappedCount}/${totalCount} fields · ${skipped} optional`;
+    elements.mappingWarning.hidden = true;
   } else {
     elements.mappingState.textContent = `${count} · ready`;
     elements.schemaSummary.textContent = `Schema: ${count} · email and E.164-shape checks`;
     elements.railSchemaStatus.textContent = `${count} · format checks active`;
     elements.progressMapState.textContent = `${mappedCount}/${totalCount} fields`;
+    elements.mappingWarning.hidden = true;
   }
   elements.mappingState.classList.toggle("is-incomplete", !schemaReady);
+  elements.mappingState.classList.toggle("has-conflict", duplicateSources.length > 0);
   elements.mappingState.classList.toggle("has-optional-skips", schemaReady && skippedOptional.length > 0);
   elements.progressMap.classList.toggle("is-done", schemaReady);
   elements.progressMap.classList.toggle("is-active", !schemaReady);
@@ -185,13 +215,15 @@ function renderMappingStatus() {
 
 function renderMapping() {
   const options = ["", ...state.parsed.headers];
+  const { duplicateSources } = getMappingCoverage(state.mapping);
+  const duplicateTargets = new Set(duplicateSources.flatMap(({ targets }) => targets));
   elements.mappingGrid.innerHTML = Object.entries(fieldLabels).map(([target, label]) => `
-    <div class="mapping-field ${!requiredFields.includes(target) && !state.mapping[target] ? "is-optional-skipped" : ""}">
+    <div class="mapping-field ${!requiredFields.includes(target) && !state.mapping[target] ? "is-optional-skipped" : ""} ${duplicateTargets.has(target) ? "is-conflict" : ""}">
       <label for="map-${target}"><span>Source column</span><small>${requiredFields.includes(target) ? "Required" : "Optional"}</small></label>
-      <select id="map-${target}" data-map-target="${target}" aria-label="Source column for ${label}, ${requiredFields.includes(target) ? "required" : "optional"} field">
+      <select id="map-${target}" data-map-target="${target}" aria-label="Source column for ${label}, ${requiredFields.includes(target) ? "required" : "optional"} field" ${duplicateTargets.has(target) ? 'aria-invalid="true" aria-describedby="mapping-warning"' : ""}>
         ${options.map((header) => `<option value="${escapeHtml(header)}" ${state.mapping[target] === header ? "selected" : ""}>${escapeHtml(header || "Not mapped")}</option>`).join("")}
       </select>
-      <span class="mapping-target"><span aria-hidden="true">→</span><span>${label}</span><small>${requiredFields.includes(target) ? "Must map" : state.mapping[target] ? "Mapped" : "Skipped"}</small></span>
+      <span class="mapping-target"><span aria-hidden="true">→</span><span>${label}</span><small>${duplicateTargets.has(target) ? "Conflict" : requiredFields.includes(target) ? "Must map" : state.mapping[target] ? "Mapped" : "Skipped"}</small></span>
     </div>
   `).join("");
 
@@ -204,7 +236,8 @@ function renderMapping() {
 }
 
 function renderRecords() {
-  const schemaReady = hasRequiredMappings(state.mapping);
+  const { duplicateSources } = getMappingCoverage(state.mapping);
+  const schemaReady = isMappingReady(state.mapping);
   const visible = state.filter === "all" ? state.results : state.results.filter(({ status }) => status === state.filter);
   elements.recordsBody.innerHTML = visible.map((result) => `
     <tr data-row="${result.row}" class="${result.row === state.selectedRow ? "is-selected" : ""}" tabindex="0" aria-label="Inspect row ${result.row}">
@@ -217,7 +250,9 @@ function renderRecords() {
     </tr>
   `).join("");
   elements.emptyState.hidden = visible.length !== 0;
-  if (!schemaReady) {
+  if (duplicateSources.length) {
+    elements.emptyState.innerHTML = "<strong>Resolve the duplicate source mapping</strong><span>Each source column can map to one CRM field before rows are classified or exported.</span>";
+  } else if (!schemaReady) {
     elements.emptyState.innerHTML = "<strong>Complete the required mapping</strong><span>Map Company and Email before rows are classified or exported.</span>";
   } else {
     elements.emptyState.innerHTML = "<strong>No rows in this queue</strong><span>Try another status filter.</span>";
@@ -249,10 +284,15 @@ function definitionList(values, mappingMode = false) {
 function renderInspection() {
   const selected = state.results.find(({ row }) => row === state.selectedRow) ?? state.results[0];
   if (!selected) {
+    const { duplicateSources } = getMappingCoverage(state.mapping);
     elements.selectedRow.textContent = "Row —";
-    elements.beforeValues.innerHTML = "<dt>Status</dt><dd>Waiting for mapping</dd>";
+    elements.beforeValues.innerHTML = duplicateSources.length
+      ? "<dt>Status</dt><dd>Mapping conflict</dd>"
+      : "<dt>Status</dt><dd>Waiting for mapping</dd>";
     elements.afterValues.innerHTML = "<dt>Status</dt><dd>Not evaluated</dd>";
-    elements.ruleCallout.innerHTML = "<strong>Export paused</strong><br>Complete the required mapping to evaluate rows.";
+    elements.ruleCallout.innerHTML = duplicateSources.length
+      ? `<strong>Export blocked</strong><br>${escapeHtml(duplicateMappingDetail(duplicateSources))}. Choose unique source columns to evaluate rows.`
+      : "<strong>Export paused</strong><br>Complete the required mapping to evaluate rows.";
     return;
   }
   elements.selectedRow.textContent = `Row ${selected.row}`;
@@ -325,6 +365,10 @@ document.querySelectorAll("[data-filter]").forEach((button) => {
 });
 
 elements.exportReady.addEventListener("click", () => {
+  if (!isMappingReady(state.mapping)) {
+    showToast("Resolve the mapping before exporting ready rows.");
+    return;
+  }
   downloadFile("cleangrid-ready.csv", buildReadyCsv(state.results), "text/csv;charset=utf-8");
   showToast("Ready rows downloaded locally.");
 });
